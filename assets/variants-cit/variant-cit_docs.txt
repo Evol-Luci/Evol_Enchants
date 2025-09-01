@@ -1,0 +1,508 @@
+Getting Started & Troubleshooting
+Estecka edited this page 2 weeks ago · 6 revisions
+Getting Started
+The basics
+Variants-CIT's format is fundamentally different from Optifine. In order to get your bearings, this will walk you through the process of changing a diamond sword based on a name given in an anvil. This assumes you already have some basic understanding of namespaced identifiers, and how to create and organize resource packs.
+
+1. Create the CIT module
+The module is the object that decides when to change the item's texture, and what texture to use. A single module can manage multiple variants, and does not care about the exact list of variants. You'll usually only need a single module per item, regardless of how many textures you have.
+
+Create a JSON file anywhere in assets/<namespace>/variants-cit/item/<path>.json. The <namespace> and <path> of the file doesn't affect its functionality. Your name should nonetheless be unique, since other packs can overwrite each other's modules.
+
+The file will have this content:
+
+{
+	"type": "custom_name",
+	"items": "minecraft:diamond_sword",
+	"modelParent": "minecraft:item/handheld",
+	"modelPrefix": "item/custom_diamond_sword/"
+}
+type can be anything from this list. Simply changing the module's type is enough to change its behaviour; the rest of the pack's structure will remain the same in almost all cases.
+
+modelParent will usually be item/handheld for tools and weapons, or item/generated for almost all other items.
+
+modelPrefix can be whatever your want, but keep note of what you choose; this is the folder where we'll put our textures later on. The trailing slash '/' at the end of the prefix is important !
+
+Starting MC 1.21.4, the leading item/ in the model prefix is implied, but if you want your pack to be compatible with MC 1.21.3 and earlier, you should always specify it.
+
+See here for an advanced quide on how to configure modules.
+
+2. Add textures to the pack
+Suppose we want to use a custom texture for a sword named "Épée de l'End".
+
+We need to figure out the so-called "variant id" of this item. Finding a variant id is a common step for all module types, but the way it is calculated varies from one type to another. Again, refers to the type list to learn how a specific module finds its variants.
+
+In the case of custom_name, the module creates the variant by sanitizing the item's name, removing any illegal characters: "Épée de l'End" becomes "epee_de_lend", then is given the default namespace: "minecraft:epee_de_lend". This is our variant id. The variant id is then combined with the previously chosen model prefix, which gives us a model id of: minecraft:item/custom_diamond_sword/epee_de_lend.
+
+In your pack, place your texture at:
+/assets/minecraft/textures/item/custom_diamond_sword/epee_de_lend.png
+and that's it! The mod will know to use this texture for this name, you texture pack is now functional.
+
+If you want to support more custom names, you don't need to make any change to the module; just add more textures to the pack, and name them appropriately.
+
+3. Using custom models
+Up to this point, this will work if you just want a flat texture for your sword. But what if you wanted to use a flashier model ?
+
+It's more of the same, just provide a similarly named json model, and the mod will automatically pick it up:
+/assets/minecraft/models/item/custom_diamond_sword/epee_de_lend.json
+
+Similarly, if you want to leverage the functionalities of MC 1.21.4's new item states, just provide an appropriately named file:
+/assets/minecraft/items/custom_diamond_sword/epee_de_lend.json
+
+Ultimately, all the mod does is override the value of the item_model component of the item, meaning everything that can be done with those can be done with Variants-CIT. Having a good understanding of how this component works will help you a lot.
+
+Variant ID	<namespace>:<path>
+Equivalent item_model component	<namespace>:<modelPrefix><path>
+Matching item state	/assets/<namespace>/items/<modelPrefix><path>.json
+Matching baked model	/assets/<namespace>/models/item/<modelPrefix><path>.json
+Matching texture	/assets/<namespace>/textures/item/<modelPrefix><path>.png
+Using custom data as variants
+The custom_name module type we used above requires little configuration, but is designed around a specific use case. There are other purpose-made modules for other common use cases, but if you need a variant that is stored into an unusual location, the two modules types that will interest you are component_data and component_format; those let you pick data from anywhere in a chosen component's NBT representation.
+
+Relevant documentation: Item Properties / Transforms
+
+Locating the data
+Suppose you want to create a module for the effect of suspicious stew: First, you need to figure out where the variant is stored in the item. Go in-game, put a bowl of supicious stew in your main hand, and use this command:
+
+/data get entity @s SelectedItem.components
+This should print something like this into the chat:
+
+{"minecraft:suspicious_stew_effects": [{duration:7, id:"minecraft:saturation"}]}
+
+Here we learn that: (1) The effect id is in a component called suspicious_stew_effect. (2) The effect is stored under a key "id", which itself is stored at the first position of an array.
+
+Fill this into the componentType and 'nbtPath' parameters of component_data, and your module will use the effect id as the variant id:
+
+{
+	"type": "component_data",
+	"items": "minecraft:suspicious_stew",
+	"modelPrefix": "item/stew/",
+	"parameters": {
+		"componentType": "suspicious_stew_effects",
+		"nbtPath": "[0].id"
+	}
+}
+Tip
+
+Specific components and data types may require extra "expect" and "transform" parameters. For now, you can just set them to auto:
+
+{
+	"componentType": "...",
+	"nbtPath": "...",
+	"expect": "auto",
+	"transform": "sanitize_auto"
+}
+I wouldn't recommend using these values in released packs, but you can use them as training wheels. It's easier to get something working with them, but they may also reduce performances, or treat some invalid components as valid.
+
+Combining multiple pieces of data
+The module component_data can only work with a single piece of data, component_format is its equivalent for working with multiple pieces of data.
+
+Here's a module that constructs a variant id from both a firework's explosion pattern, and its flight duration:
+
+{
+	"type": "component_format",
+	"items": "firework_rocket",
+	"modelPrefix": "item/rocket/",
+	"parameters": {
+		"format": "${pattern}_${duration}",
+		"variables": {
+			"pattern":  { "componentType": "fireworks", "nbtPath": ".explosions[0].shape" },
+			"duration": { "componentType": "fireworks", "nbtPath": ".flight_duration" }
+		}
+	}
+}
+The objects inside "variables" are formatted the same way as for the component_data module. The variant id is built using the provided format, where ${variables} are substitued with their corresponding value.
+
+Sanitizing the data
+By default, variants are expected to be stored as plain identifiers. If the data you're looking for contains some illegal characters, you'll need extra parameters in order to convert it into a valid variant ID.
+
+Hypixel uses upper-case identifiers, minecraft identifiers only allows lower-cases. You can convert those ids to lower-case like this:
+
+{
+	"componentType": "custom_data",
+	"nbtPath": ".id",
+	"transform": "lowercase"
+}
+For more complex texts similar to custom names, you'll want two things:
+
+"expect":"rich_text" will let the module know the text may not be stored as a plain string, but instead as an NBT text. This will strip all formatting from the text, there is currently no reliable way to use formatting in the variant id.
+"transform":"sanitize" wil perform a much more aggressive sanitization, identically to the custom_name module mentioned in the beginning.
+{
+	"componentType": "lore",
+	"nbtPath": "[0]",
+	"expect": "rich_text",
+	"transform": "sanitize"
+}
+If you want to only use a portion of the text, or require it to match a specific format, you can use regular expressions to transform the data. For example, this will only match custom names that start with a given prefix, and remove that prefix from the variant-id:
+
+{
+	"componentType": "custom_name",
+	"nbtPath": "",
+	"expect": "rich_text",
+	"transform": [
+		"sanitize",
+		{ "regex":"someprefix_(.+)", "substitution":"$1"}
+	]
+}
+Here, the regex is applied after sanitization, but you can change the order of the transforms, or add new ones as you see fit.
+
+I recommend you use regex101.com to test your regular expressions and substitution strings.
+
+Troubleshooting
+Models are left unchanged
+Check that the module and its models are properly loaded.
+Hit F3+T (reload resource packs), then look at Minecraft's console log. Look for a line that says "Found X variants for CIT module <module_id>". (The module id is <namespace>:<path> for the file assets/<namespace>/variants-cit/item/<path>.json)
+
+If you cannot find the line with your module's id, it means the module itself could not be loaded. There may be an error in the format of your json, in which case additional errors will be shown in the log. Otherwise, the module may not be located in the correct directory.
+
+If the line exists, but the number of variants is wrong, it means there is an issue with the file structure of your models/textures; make sure their path match the model prefix defined in your module. If you are providing textures without any model, make sure your module has a model parent.
+
+Check the variant ID and the data structure of the item.
+If both the module and models are loaded, then it means you model names don't match the item's variant ID, or that the module could not find the variant ID.
+
+In game, put an item in your main-hand, and use the the command /data get entity @s SelectedItem.components in order to quickly check that the components on the item match the one expected by the module. For NBT-based modules, this will also show the structure of the component, so you can check your nbtPath.
+
+Modules that perform some heavy transformation on the data (such as custom_name or component_data) can take "debug":true as parameter, which will print the final variant IDs of any item it encounters into the console log. For other module types, double check how the variant ID is computed.
+
+Missing models or textures
+(A.k.a. the pink and black checkerboard.)
+
+If you use ModernFix, try disabling Dynamic Resources.
+
+Otherwise, double check that the baked models, model parents, or item states are correct.
+
+Optifine allows for pack structures and asset formats that are illegal in vanilla minecraft. If you are trying to port an optifine-formatted pack, even if the models are already provided to you, you may still need to make modifications to them, and move some files around to directories where Minecraft will actually load them.
+
+If possible, try testing your models and item states in vanilla minecraft, by using the item_model component instead of a CIT module.
+
+Items aren't held correctly, missing animations
+Check that you are using the correct model parent. item/generated for regular items, item/handheld for regular tools and weapons.
+
+Models for weapons with complexes animations like bows, shields and tridents cannot be generated automatically from textures. For those, you'll need to provide custom item states and baked models, using the vanilla assets as an example.
+
+If possible, try testing your models and item states in vanilla minecraft, by using the item_model component instead of a CIT module.
+
+
+Module Types
+Estecka edited this page last week · 11 revisions
+Module Types
+This page describes the behaviour of every built-in types to use in module configurations. See model prefixes in particular, to understand how variants are associated with textures and models.
+
+A module's type defines how its item's variant ID will be computed. Each type has its own separate system, so the "parameters" of one type do not apply to the others, unless explicitely specified.
+
+Existing types can be thought of as belonging to either of two families:
+The purpose-made types require no parameters to be functional, but are tailored for specific and common use cases. When they do have parameters, those are usually optional, and only there for fine-tuning.
+The generalist types are more flexible, but require a lot more configuration to achieve basic results. Those are a relatively recent addition, and there are still some purpose-made functionalities that cannot be replicated using generalist modules (e.g: Enchantment priority and numeric value thresholds).
+
+Generalist modules
+component_data
+Pulls a single piece of data from a given component or property, and uses that data as the variant ID.
+
+The module will fail if the item does not have the component, or valid data is missing from that component at that path.
+
+Parameters:
+debug: Optional boolean, defaults to false. Causes variant IDs encountered by the module to be printed in the log.
+All parameters from Item Properties.
+Example:
+{
+	"type": "component_data",
+	"items": "minecraft:firework_rocket",
+	"modelPrefix": "item/firework_rocket/flight_",
+	"parameters": {
+		"debug": true,
+		"componentType": "lore",
+		"nbtPath": "[0]",
+		"expect": "rich_text",
+		"transform": "sanitize_path"
+	}
+}
+component_format
+A step up from component_data, that can pull and combine multiple pieces of data from multiple properties at once.
+
+The module will fail if at least one piece of data is missing or invalid.
+
+Parameters:
+debug: Optional boolean, defaults to false. Causes variant IDs encountered by the module to be printed in the log.
+format: Mandatory, string. The format of the variant ID. The string can contain variables formatted as ${name}, which will be substitued with the data extracted from the components. Variable names can contain any character in [a-zA-Z0-9_], but may not start with a number.
+variables: Mandatory, Maps variable names to Item Properties. Indicates where and how to get the data for each variable in the format.
+Example:
+This behaves similarly to the trim module type, but can handle multiple item types at once, without mixing their respective CITs:
+
+{
+	"type": "component_format",
+	"items": [ "diamond_pickaxe", "iron_axe", "netherite_sword", "..."],
+	"modelPrefix": "item/trimmed_",
+	"parameters": {
+		"debug": true,
+		"format": "${patternSpace}:${item}/${patternPath}_${material}",
+		"variables": {
+			"patternSpace": {
+				"componentType": "trim",
+				"nbtPath": ".pattern",
+				"transform": "discard_path"
+			},
+			"item": {
+				"property": "item_type",
+				"transform": "discard_namespace"
+			},
+			"patternPath": {
+				"componentType": "trim",
+				"nbtPath": ".pattern",
+				"transform": "discard_namespace"
+			},
+			"material": {
+				"componentType": "trim",
+				"nbtPath": ".material",
+				"transform": "discard_namespace"
+			}
+		}
+	}
+}
+Example variant id: minecraft:netherite_sword/sentry_diamond
+
+Corresponding texture/baked model id: minecraft:item/trimmed_netherite_sword/sentry_diamond
+
+Purpose-made modules
+These modules were designed around specific use cases and item types. They can still be used on any item, so long as it provides the required component.
+
+Some of these modules have extra functionalities that cannot be reproduced using generalist modules.
+
+axolotl_variant
+Constructs a variant id from the color of the Axolotl, and optionally its age. Target components and data vary depending on the version of Minecraft.
+
+As of writing, available colours are: lucy, wild, gold, cyan, blue. All are in the minecraft namespace.
+
+If a baby CIT is missing the module will fallback to the adult CIT of the same colour.
+
+Example variant ids:
+
+minecraft:lucy Default for all ages.
+minecraft:lucy_baby Default for babies.
+minecraft:lucy_adult If adultSuffix is set to _adult.
+parameters
+adultSuffix: Optional, defaults to an empty string.
+babySuffix: Optional, defaults to "_baby".
+custom_name
+Derives the variant from the custom_name component.
+
+The name itself is used as the variant, with illegal characters being either removed or converted: Uppercases are converted to lowercases, accents are stripped off, spaces ' ' are converted to underscores '_', and all other invalid characters are completely removed.
+
+E.g: "Épée de l'End" -> minecraft:epee_de_lend
+
+Special formatting, such as colour and boldness, are ignored.
+
+Parameters:
+debug: Optional, defaults to false. Prints name-to-variants conversion into the log, whenever a new one is computed.
+specialNames: Optional, Maps Strings to Identifiers. Lets you hardcode some associations between names and variant ID, instead of letting the module compute them automatically like above. (This parameter is a relica from older versions, and will not be required in most cases.)
+Tip
+
+This historical module type has very limited set of options. Using component_data instead will give you access to Regex matching and substitutions.
+
+durability
+Uses the item's remaining durability as variant. The module will use the closest CIT with a value greater or equal to the item's durability.
+
+Durability is based on the damage and max_damage components, but only max_damage is required for the module to apply. Items without a damage component are treated as full durability.
+
+Parameters:
+namespace Optional string, defaults to "minecraft". The namespace to use for the variant id.
+scale: Optional positive integer, defaults to the item's maximum durability. The range of values to use. For example, with a scale of 100, the variant will be the precentage of durability, instead of the raw durability.
+enchantment, stored_enchantment
+Derives the variant ID from one of the enchantment on the item, optionally including the enchantment's level. Tools should use enchantments, and books should use stored_enchantment.
+
+This will prioritize enchantments that, in order: have available models, have the largest exclusive set, or have the highest level.
+
+If the special model "multi" is defined, it will be used on items with more than one enchantments. This will only count enchantments that are not defined in the requiredEnchantment parameter.
+
+While one module can only work with a single enchantment, it is still possible to create CITs based on multiple enchantments, by using multiple modules with different priorities and requiredEnchantments parameters.
+
+Parameters:
+levelSeparator: Optional, String. If set, the module will add the enchantment level at the end of the variant ID, using the given separator. The module will fall back to lower-level CITs, if it can't find one that matches the item's exact level. Finally, if none could be found, the module will fall back to level-invariant CITs.
+requiredEnchantments: Optional, maps Identifiers to Integers. The module will only be applied to items that have enough levels in the specified enchantments. Enchantments listed here will never be selected as the variant ID.
+Example:
+This module will manage CITs that only have a single enchantment:
+
+{
+	"type": "enchantment",
+	"modelPrefix": "item/diamond_sword/"
+}
+This additional module will only apply to items with the fire_aspect enchantement, and provide a CIT based on a second enchantment. (See module priorities.)
+
+{
+	"type": "enchantment",
+	"priority": 100,
+	"modelPrefix": "item/fire_aspected_diamond_sword/",
+	"parameters": {
+		"requiredEnchantments": { "fire_aspect": 1 }
+	}
+}
+instrument
+Copies the variant from the item component instrument, used by goat horns.
+
+Note that all vanilla instruments have their name suffixed with _goat_horn; you'll need that suffix in your CITs in addition to your model prefix.
+
+item_count
+Uses the item count as the variant. If no CIT matches the exact count, it will automatically fall back to lower-value CITs.
+
+The namespace of the variant id is fixed, but configurable.
+
+Parameters:
+namespace Optional string, defaults to "minecraft". The namespace to use for the variant id.
+jukebox_playable
+Copies the variant from the item component jukebox_playable, used by music discs.
+
+painting_variant
+Uses the painting id as the variant id, used by paintings in the creative inventory. Target component varies depending on the version of Minecraft.
+
+The special model invalid will be applied to painting variants that do not exist with the current datapacks. (No longer possible in MC 1.21.5)
+
+potion_type
+Derives the variant from the item component potion_contents, used by potions, splash potions, and lingering potions. This specifically looks at the potion's "type", and not the actual status effects.
+
+trim
+Combines the pattern and material from the trim component into a single identifier, in a way that imitates the vanilla format for trimmed armour models. The resulting variant is: <pattern_namespace>:<pattern_path>_<material_path>.
+
+E.g: minecraft:sentry_diamond
+
+Only the namespace of the pattern is used. The material's namespace is discarded.
+
+trim_pattern, trim_material
+Uses either the pattern or the material of the trim component as a variant.
+
+Module Configuration
+Estecka edited this page on Jun 17 · 14 revisions
+Module Configuration
+A module Configurations is a JSON file provided by a resource pack, located somewhere in variants-cit/item. It controls a large collection of CITs, and defines how to match them to an item.
+
+Ultimately, all a module does is override the value of the item_model component of the item, meaning everything that can be done with those can still be done with Variants-CIT. Having a good understanding of Item states will help a lot.
+
+Schema
+The strict minimum required to form a working module is its type, its target items, and the location of its models:
+
+{
+	"type": "painting_variant",
+	"items": "painting",
+	"modelPrefix": "item/painting/",
+	"modelParent": "item/generated"
+}
+(modelParent is technically optional, but will be useful in almost all cases.)
+
+Here's a more complete example, as used by the mod Invariable-Paintings:
+
+{
+	"type": "painting_variant",
+	"items": ["minecraft:painting"],
+	"priority": 0,
+	"modelPrefix": "item/painting/",
+	"modelParent": "minecraft:item/generated",
+	"itemsFromModels": true,
+	"fallback": "invarpaint:item/filled_painting",
+	"special": {
+		"invalid": "invarpaint:item/missing_painting"
+	},
+	"parameters": {
+	}
+}
+type
+Mandatory, Namespaced Identifier
+
+The type of the CIT module used for this item. This affects how an item's variant is identified, and what special models are available to it.
+
+items
+Mandatory, A single, or a list of Namespaced Identifiers.
+
+A list of item types the module will be applied to. The mod will silently ignore identifiers that do not match an existing item, so a texture pack will remain compatible with versions of minecraft that lack some of the defined items.
+
+priority
+Optional, Integer, defaults to 0.
+
+When multiple modules are applied to the same item stack, modules with higher priorities are evaluated first. If, and only if, a module cannot provide a CIT for the item stack, then the next lower priority module will be evaluated. This can happen, if:
+
+The module cannot find a variant for the item.
+The module has found a variant, but that variant has no CIT, and no fallback was specified.
+The module wants to use a special model, but that model was not specified.
+If your modules would almost never fail to apply a CIT, then I recommend a value around 0. If your module often leave an item unchanged, then I recommend a value around 100.
+
+modelPrefix
+Mandatory, String
+
+The location of the CITs that this module will use as variants. CITs can be in either of the vanilla items/, models/item/ and textures/item/ folders. All assets whose path start with the model prefix (including subdirectories) are matched to the item variant with the corresponding identifier.
+
+For a given variant, the module will prioritize different types of assets depending on what is available and how other options are configured:
+
+First, the module will look for a matching items/. (The vanilla behaviour of the item_model component.)
+If absent, and if itemsFromModels is set to true, then the module will look for a matching model/.
+If absent, and if modelParent is also defined, then the module will look for a matching texture/.
+Variant ID	<namespace>:<path>
+Equivalent item_model component	<namespace>:<modelPrefix><path>
+Matching item state	/assets/<namespace>/items/<modelPrefix><path>.json
+Matching baked model	/assets/<namespace>/models/item/<modelPrefix><path>.json
+Matching texture	/assets/<namespace>/textures/item/<modelPrefix><path>.png
+Important
+
+Pre-1.21.4, before the introduction of the items/ folder, prefixes were resolved from the root of models/ and texture/, instead of their item/ subdirectory. For backward compatibility, prefixes starting with "item/" will have that bit stripped off in MC 1.21.4. If you want your pack to be compatible with both MC 1.21.4 and earlier versions, you must keep using "item/" at the start of your prefix.
+
+The presence or absence of a slash '/' at the end of a prefix is important ! It makes the difference between a prefix that consists only of directories, and a prefix that contains the beginning of a filename:
+
+Prefix: enchanted_book/ -> Variant asset: <namespace>:enchanted_book/<path>
+Prefix: enchanted_book_ -> Variant asset: <namespace>:enchanted_book_<path>
+Caution
+
+You should never use an empty string, or only "item/" as the model prefix. Doing so will cause the module to collect every single item model in the game as a potential variant. This may cause unexpected behaviours (especially with modules like custom_name) and reduce performances.
+
+modelParent
+Optional, Namespaced Identifier.
+
+If set, missing models/ will be automatically generated from existing textures/, whose name matches the modelPrefix, the fallback, and the special models.
+
+The given value is used as the generated model's parent; typically, item/generated for regular items, and item/handheld for tools. When in doubt, try using the vanilla model as parent.
+
+Generated models:
+
+{
+	"parent": "<modelParent>",
+	"textures":{
+		"layer0":"<namespace>:item/<modelPrefix><path>"
+	}
+}
+itemsFromModels
+Optional, boolean, defaults to true.
+
+If enabled, missing items/ will be automatically generated based on existing or previously generated models/, whose name matches the modelPrefix or the fallback and special models.
+
+If you are working with item types that require you to provide your own item states (Bows, Shields, Tridents, etc), I recommend setting this to false. It won't make anything work, but it's better for performances and for debugging. This will prevent the module from generating garbage unused variants from animation-specific assets (_pulling, _blocking, etc), and will prevent half-working models from showing up if your item-states aren't properly set-up.
+
+Resulting item state:
+
+{
+	"model": {
+		"type": "model",
+		"model": "<namespace>:item/<modelPrefix><path>"
+	}
+}
+fallback
+Optional, Namespaced Identifier.
+
+The model to use for items for which a variant was identified, but no model was provided for this variant. Modules with fallback are much less likely to hand over control to lower priority modules.
+
+Note
+
+For backward compatibility with pre-1.21.4 packs, the leading "item/" will be stripped off if present.
+
+special
+Optional, maps Strings to Namespaced Identifiers.
+
+A list of models that the CIT module may use in certain exceptional circumstances. What models are used and when depends on the type of the CIT module.
+
+All special models are optional and default to null. All models listed here are automatically loaded.
+
+Note
+
+For backward compatibility with pre-1.21.4 packs, the leading "item/" will be stripped off if present.
+
+parameters
+Type-dependent, Object.
+
+An object containing additional non-model parameters that affect the behaviour of the module.
+
+The list of possible parameters and their effects depends on the type of the CIT module.
+

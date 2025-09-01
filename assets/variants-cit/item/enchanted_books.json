@@ -1,0 +1,9 @@
+{
+	"type": "stored_enchantment",
+	"items": "minecraft:enchanted_book",
+	"modelPrefix": "item/book_cit/",
+	"parameters": {
+		"debug": true,
+		"levelSeparator": "_lvl_"
+	}
+}

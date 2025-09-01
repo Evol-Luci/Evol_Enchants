@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": " This pack is a small part of a much larger 3d pack based on the faithful 32x resource pack. This pack adds 3d models and brand new textures to individualize enchanted books. --- I bashed the fuck outta this... Evol -This pack is a combination of mixing faithful 32x 3D with my chaotic brain.",
+    "pack_format": 64,
+    "supported_formats": {
+      "min_inclusive": 43,
+      "max_inclusive": 64
+    }
+  }
+}
